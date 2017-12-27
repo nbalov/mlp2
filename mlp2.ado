@@ -1,6 +1,6 @@
 *! version 1.0.0  22nov2017
 
-include "/home/nhb/ado/personal/m/mlp2.mata"
+include mlp2.mata, adopath
 
 ////////////////////////////////////////////////////////////////////////////////
 
