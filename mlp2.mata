@@ -44,6 +44,7 @@ protected:
 	
 	// training operations	
 	`RS' train_time, train_epochs
+	`RS' train_loss
 	`RS' nobias
 	`RS' dropout_p
 	`RS' echo
@@ -51,8 +52,9 @@ protected:
 	void _init()
 	virtual void _init_extra()
 
-	void _calc_forward()
-	`RS' _calc_loss()
+	void _compute_forward()
+	`RS' _compute_loss()
+
 	void _grad_alpha()
 	void _grad_beta()
 	void _grad_gamma()
@@ -66,7 +68,6 @@ public:
 	void predict()
 	void simulate()
 	void score()
-
 }
 
 void c_mlp2::new()
@@ -111,6 +112,7 @@ void c_mlp2::save_params()
 	}
 	st_numscalar("e(train_time)",   train_time,   "hidden")
 	st_numscalar("e(train_epochs)", train_epochs, "hidden")
+	st_numscalar("e(train_loss)",   train_loss,   "hidden")
 }
 
 void c_mlp2::restore_params()
@@ -222,7 +224,7 @@ void c_mlp2::predict(`SS' sxvars, `SS' stouse, `SS' sgenvar)
 	// rescale test dataset using training means and vars
 	X = ((X :- means) :/ sqrt(vars))
 	
-	_calc_forward(J(1,0,0))
+	_compute_forward(J(1,0,0))
 
 	for (k = 1; k <= mout; k++) {
 		stata(sprintf("cap drop %s", ylabels[k]))
@@ -254,7 +256,7 @@ void c_mlp2::simulate(`SS' sxvars, `SS' stouse, `SS' sgenvar)
 	// rescale test dataset using training means and vars
 	X = ((X :- means) :/ sqrt(vars))
 	
-	_calc_forward(J(1,0,0))
+	_compute_forward(J(1,0,0))
 
 	stata(sprintf("cap drop %s", sgenvar), 1)
 	stata(sprintf("generate double %s = .", sgenvar), 1)
@@ -356,7 +358,7 @@ void c_mlp2::_init_extra()
 {
 }
 
-void c_mlp2::_calc_forward(`RV' batch_ind)
+void c_mlp2::_compute_forward(`RV' batch_ind)
 {
 	`RS' j
 	`RM' sind
@@ -419,7 +421,7 @@ void c_mlp2::_calc_forward(`RV' batch_ind)
 	expZ  = expZ  :/ rexpZ
 }
 
-`RS' c_mlp2::_calc_loss(`RV' batch_ind)
+`RS' c_mlp2::_compute_loss(`RV' batch_ind)
 {
 	`RS' s, loss
 	loss = 0
@@ -538,6 +540,8 @@ void c_mlp2::_grad_alpha(`RV' batch_ind)
 
 class c_mlp2_optimizer extends c_mlp2 {
 protected:
+	`RS' iter
+
 	virtual void _update()
 public:
 	void fit()
@@ -548,8 +552,8 @@ void c_mlp2_optimizer::fit(`SS' sy, `SS' sxvars, `SS' touse,
 	`RS' batchsize, `RS' epochs, `RS' losstol, `RS' dropout, 
 	`RS' snobias, `RS' secho)
 {
-	`RS' iter, curloss, lastloss
-	`RS' nbatches, nb
+	`RS' curloss, lastloss, brkval
+	`RS' nbatches, nb, ntotal
 	`RV' batch_ind, ind
 
 	echo = secho
@@ -577,11 +581,19 @@ void c_mlp2_optimizer::fit(`SS' sy, `SS' sxvars, `SS' touse,
 	}
 	nbatches = floor(n/batchsize)
 
+	brkval = setbreakintr(1)
+
 	lastloss = .
 	for (iter = 1; iter <= epochs; iter++) {
 
+		curloss = 0
+		ntotal  = 0
 		for (nb = 1; nb <= nbatches; nb++) {
 		
+			if (breakkey()) {
+				break
+			}
+
 			batch_ind = J(1, 0, 0)
 			if (batchsize < n) {
 				if (nb < nbatches) {
@@ -594,16 +606,24 @@ void c_mlp2_optimizer::fit(`SS' sy, `SS' sxvars, `SS' touse,
 
 			_dropout()
 
-			_calc_forward(batch_ind)
+			_compute_forward(batch_ind)
 
-			curloss = _calc_loss(batch_ind)
+			curloss = curloss + 
+				length(batch_ind) * _compute_loss(batch_ind)
+			ntotal = ntotal + length(batch_ind)
 			if (curloss >= .) {
 				break
 			}
 
 			_update(batch_ind)
-
 		}
+		curloss = curloss / ntotal
+
+		if (breakkey()) {
+			breakkeyreset()
+			break
+		}
+
 		if (echo > 0 && echo*floor((iter-1)/echo)+1 == iter) {
 			printf("%g: %g\n", iter, curloss)
 		}
@@ -615,7 +635,10 @@ void c_mlp2_optimizer::fit(`SS' sy, `SS' sxvars, `SS' touse,
 		}
 		lastloss  = curloss
 	}
-	
+
+	brkval = setbreakintr(brkval)
+
+	train_loss   = curloss
 	train_epochs = iter
 	
 	timer_off(100)
@@ -629,7 +652,7 @@ void c_mlp2_optimizer::fit(`SS' sy, `SS' sxvars, `SS' touse,
 class c_mlp2_gd extends c_mlp2_optimizer {
 protected:
 	`RS' lrate
-	`RS' friction
+	`RS' friction, friction0
 
 	void _update()
 public:
@@ -642,7 +665,7 @@ public:
 void c_mlp2_gd::new()
 {
 	lrate = 0.01
-	friction = 0
+	friction0 = 0
 }
 
 void c_mlp2_gd::set_lrate(`RS' rate)
@@ -652,7 +675,7 @@ void c_mlp2_gd::set_lrate(`RS' rate)
 
 void c_mlp2_gd::set_friction(`RS' fric)
 {
-	friction = fric
+	friction0 = fric
 }
 
 void c_mlp2_gd::_update(`RV' batch_ind)
@@ -689,8 +712,8 @@ public:
 
 void c_mlp2_momentum::new()
 {
-	lrate = 0.01
-	friction = 0.9
+	lrate    = 0.01
+	friction = 1
 }
 
 void c_mlp2_momentum::_init_extra()
@@ -711,13 +734,16 @@ void c_mlp2_momentum::_update(`RV' batch_ind)
 	_grad_beta()
 	_grad_alpha(batch_ind)
 
+	friction = friction0*((iter-1)/iter)
+	if (friction < 0) friction = 0
+
 	alphaMom  = friction*alphaMom + lrate*alphaGrad
 	betaMom   = friction*betaMom  + lrate*betaGrad
 	gammaMom  = friction*gammaMom + lrate*gammaGrad
 	if (!nobias) {
-		alpha0Mom  = friction*alpha0Mom + lrate*alpha0Grad
-		beta0Mom   = friction*beta0Mom  + lrate*beta0Grad
-		gamma0Mom  = friction*gamma0Mom + lrate*gamma0Grad
+		alpha0Mom = friction*alpha0Mom + lrate*alpha0Grad
+		beta0Mom  = friction*beta0Mom  + lrate*beta0Grad
+		gamma0Mom = friction*gamma0Mom + lrate*gamma0Grad
 	}
 
 	alpha = alpha - alphaMom
@@ -740,29 +766,36 @@ protected:
 
 void c_mlp2_nag::_update(`RV' batch_ind)
 {
-	alpha = alpha - friction*alphaMom
-	beta  = beta  - friction*betaMom
-	gamma = gamma - friction*gammaMom
-	if (!nobias) {
-		alpha0 = alpha0 - friction*alpha0Mom
-		beta0  = beta0  - friction*beta0Mom
-		gamma0 = gamma0 - friction*gamma0Mom
+	if (friction > 0) {
+		alpha = alpha - friction*alphaMom
+		beta  = beta  - friction*betaMom
+		gamma = gamma - friction*gammaMom
+		if (!nobias) {
+			alpha0 = alpha0 - friction*alpha0Mom
+			beta0  = beta0  - friction*beta0Mom
+			gamma0 = gamma0 - friction*gamma0Mom
+		}
 	}
 
 	_grad_gamma(batch_ind)
 	_grad_beta()
 	_grad_alpha(batch_ind)
 
-	// restore previous state
-	alpha = alpha + friction*alphaMom
-	beta  = beta  + friction*betaMom
-	gamma = gamma + friction*gammaMom
-	if (!nobias) {
-		alpha0 = alpha0 + friction*alpha0Mom
-		beta0  = beta0  + friction*beta0Mom
-		gamma0 = gamma0 + friction*gamma0Mom
+	if (friction > 0) {
+		// restore previous state
+		alpha = alpha + friction*alphaMom
+		beta  = beta  + friction*betaMom
+		gamma = gamma + friction*gammaMom
+		if (!nobias) {
+			alpha0 = alpha0 + friction*alpha0Mom
+			beta0  = beta0  + friction*beta0Mom
+			gamma0 = gamma0 + friction*gamma0Mom
+		}
 	}
-	
+
+	friction = friction0*((iter-1)/(iter+2))
+	if (friction < 0) friction = 0
+
 	alphaMom  = friction*alphaMom + lrate*alphaGrad
 	betaMom   = friction*betaMom  + lrate*betaGrad
 	gammaMom  = friction*gammaMom + lrate*gammaGrad

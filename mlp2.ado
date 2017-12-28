@@ -28,7 +28,7 @@ program mlp2_fit, eclass
 	syntax varlist(fv ts) [if] [in] [, nobias	///
 		layer1(real 0) layer2(real 0)		///
 		OPTimizer(string)			///
-		LRate(real 0.01) FRiction(real 0.9)	///
+		LRate(real 0.01) FRiction(real 1)	///
 		EPSilon(real 1e-8)			///
 		LOSStol(real 0.00)			///
 		DROPout(real 0.00)			///
@@ -98,7 +98,7 @@ program mlp2_fit, eclass
 	if `"`optimizer'"' == "gd" {
 		local c_mlp2_optimizer c_mlp2_gd
 	}
-	else if `"`optimizer'"' == "momentum" {
+	else if `"`optimizer'"' == "momentum" || `"`optimizer'"' == "mom" {
 		local c_mlp2_optimizer c_mlp2_momentum
 	}
 	else if `"`optimizer'"' == "nag" {
