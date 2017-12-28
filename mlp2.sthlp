@@ -39,7 +39,7 @@ default is {opt level1}{p_end}
 {synopt :{opt nobias}}no bias terms are used{p_end}
 {synopt :{opt opt:imizer(string)}}optimizer; default is {cmd:optimizer(gd)}{p_end}
 {synopt :{opt lr:ate(#)}}learning rate of the optimizer; default is {cmd:lrate(0.01)}{p_end}
-{synopt :{opt fr:iction(#)}}friction rate for momentum optimizers; default is {cmd:friction(0.9)}{p_end}
+{synopt :{opt fr:iction(#)}}friction rate for momentum optimizers; default is {cmd:friction(1)}{p_end}
 {synopt :{opt eps:ilon(#)}}gradient smoothing term; default is {cmd:epsilon(1e-8)}{p_end}
 {synopt :{opt loss:tol(#)}}stopping loss tolerance; default is {cmd:losstol(0)}{p_end}
 {synopt :{opt drop:out(#)}}dropout probability; default is {cmd:dropout(0)}{p_end}
@@ -109,7 +109,7 @@ It must be a positive number. The default value is {it:0.01}.
 
 {phang}
 {opt friction(#)} specifies the friction rate for momentum based optimizers. 
-It must be a number between 0 and 1, including. The default value is {it:0.9}.
+It must be a number between 0 and 1, including. The default value is {it:1}.
 
 {phang}
 {opt epsilon(#)} specifies the gradient smoothing term used in AdaGrad and similar 
