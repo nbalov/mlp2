@@ -361,7 +361,7 @@ void c_mlp2::_init_extra()
 void c_mlp2::_compute_forward(`RV' batch_ind)
 {
 	`RS' j
-	`RM' sind
+	`CV' sind
 
 	if (length(batch_ind) >= 1) {
 		if (dropout_p > 0 && cols(indLayer0) > 0 && 
@@ -385,8 +385,9 @@ void c_mlp2::_compute_forward(`RV' batch_ind)
 	UU = U
 	U0 = J(1, cols(U), NULL)
 	for (j = 1; j <= cols(U); j++) {
-		sind = selectindex(U[.,j] :< 0)
-		U0[j] = &sind
+		sind   = selectindex(U[,j] :<= 0)
+		U0[j]  = &J(1,0,0)
+		*U0[j] = sind
 		if (length(sind) > 0) {
 			UU[sind,j] = J(length(sind), 1, 0)
 		}
@@ -402,8 +403,9 @@ void c_mlp2::_compute_forward(`RV' batch_ind)
 	VV = V
 	V0 = J(1, cols(V), NULL)
 	for (j = 1; j <= cols(V); j++) {
-		sind = selectindex(V[.,j] :< 0)
-		V0[j] = &sind
+		sind   = selectindex(V[,j] :<= 0)
+		V0[j]  = &J(1,0,0)
+		*V0[j] = sind
 		if (length(sind) > 0) {
 			VV[sind,j] = J(length(sind), 1, 0)
 		}
@@ -441,7 +443,7 @@ void c_mlp2::_compute_forward(`RV' batch_ind)
 
 void c_mlp2::_grad_gamma(`RV' batch_ind) 
 {
-	`RS' k, s, ys
+	`RS' k, s, ys, nfact
 	`CV' sind
 	// gammaGrad: m2 x mout
 	gammaGrad  = VV' * expZ
@@ -474,10 +476,11 @@ void c_mlp2::_grad_gamma(`RV' batch_ind)
 		sind = *(V0[k])
 		dGdV[sind, k] = J(length(sind), 1, 0)
 	}
-	gammaGrad  = gammaGrad  :/ rows(VV)
-	dGdV = dGdV :/ rows(VV)
+	nfact = 1 / rows(expZ)
+	gammaGrad  = gammaGrad  :* nfact
+	dGdV = dGdV :* nfact
 	if (!nobias) {
-		gamma0Grad = gamma0Grad :/ rows(VV)
+		gamma0Grad = gamma0Grad :* nfact
 	}
 }
 
@@ -552,12 +555,12 @@ void c_mlp2_optimizer::fit(`SS' sy, `SS' sxvars, `SS' touse,
 	`RS' batchsize, `RS' epochs, `RS' losstol, `RS' dropout, 
 	`RS' snobias, `RS' secho)
 {
-	`RS' curloss, lastloss, brkval
+	`RS' curloss, lastloss, batchloss, brkval
 	`RS' nbatches, nb, ntotal
-	`RV' batch_ind, ind
+	`RV' batch_ind, sample_ind, ind
 
-	echo = secho
-	nobias = snobias
+	echo      = secho
+	nobias    = snobias
 	dropout_p = dropout
 
 	// start the timer
@@ -572,6 +575,11 @@ void c_mlp2_optimizer::fit(`SS' sy, `SS' sxvars, `SS' touse,
 	vars  = diagonal(variance(X))'
 	ind   = selectindex(vars :<= 0)
 	vars[ind] = J(1, length(ind), 1)
+	ind   = selectindex(vars :>= .)
+	if (length(ind) > 0) {
+		means[ind] = J(1, length(ind), 0)
+		vars[ind]  = J(1, length(ind), 1)
+	}
 
 	// rescale training dataset
 	X = ((X :- means) :/ sqrt(vars))
@@ -586,6 +594,8 @@ void c_mlp2_optimizer::fit(`SS' sy, `SS' sxvars, `SS' touse,
 	lastloss = .
 	for (iter = 1; iter <= epochs; iter++) {
 
+		sample_ind = order(runiform(n, 1), 1)
+
 		curloss = 0
 		ntotal  = 0
 		for (nb = 1; nb <= nbatches; nb++) {
@@ -594,7 +604,6 @@ void c_mlp2_optimizer::fit(`SS' sy, `SS' sxvars, `SS' touse,
 				break
 			}
 
-			batch_ind = J(1, 0, 0)
 			if (batchsize < n) {
 				if (nb < nbatches) {
 					batch_ind = (1+(nb-1)*batchsize)..(nb*batchsize)
@@ -603,13 +612,19 @@ void c_mlp2_optimizer::fit(`SS' sy, `SS' sxvars, `SS' touse,
 					batch_ind = (1+(nb-1)*batchsize)..(n)
 				}
 			}
+			else {
+				batch_ind = 1..n
+			}
+
+			batch_ind = sample_ind[batch_ind]
 
 			_dropout()
 
 			_compute_forward(batch_ind)
 
-			curloss = curloss + 
-				length(batch_ind) * _compute_loss(batch_ind)
+			batchloss = _compute_loss(batch_ind)
+
+			curloss = curloss + length(batch_ind) * batchloss
 			ntotal = ntotal + length(batch_ind)
 			if (curloss >= .) {
 				break
@@ -651,21 +666,40 @@ void c_mlp2_optimizer::fit(`SS' sy, `SS' sxvars, `SS' touse,
 
 class c_mlp2_gd extends c_mlp2_optimizer {
 protected:
-	`RS' lrate
+	`RS' lrate, gainrate
 	`RS' friction, friction0
 
+	`RM' alphaGain,  betaGain,  gammaGain
+	`RM' alpha0Gain, beta0Gain, gamma0Gain
+	
+	`RM' alphaGrad1,  betaGrad1,  gammaGrad1
+	`RM' alpha0Grad1, beta0Grad1, gamma0Grad1
+
 	void _update()
+	
+	void _init_gain()
+	void _update_gain()
+	
 public:
 	void new()
 	void set_lrate()
+	void set_gainrate()
 	void set_friction()
 }
 
 
 void c_mlp2_gd::new()
 {
-	lrate = 0.01
+	lrate     = 0.01
+	gainrate  = 0.05
 	friction0 = 0
+	
+	alphaGain = J(0, 0, 1)
+	betaGain  = J(0, 0, 1)
+	gammaGain = J(0, 0, 1)
+	alpha0Gain = J(1, 0, 1)
+	beta0Gain  = J(1, 0, 1)
+	gamma0Gain = J(1, 0, 1)
 }
 
 void c_mlp2_gd::set_lrate(`RS' rate)
@@ -673,9 +707,130 @@ void c_mlp2_gd::set_lrate(`RS' rate)
 	lrate = rate
 }
 
+void c_mlp2_gd::set_gainrate(`RS' rate)
+{
+	gainrate = rate
+	if (gainrate < 0) gainrate = 0
+}
+
 void c_mlp2_gd::set_friction(`RS' fric)
 {
 	friction0 = fric
+}
+
+void c_mlp2_gd::_init_gain()
+{
+	alphaGain = J(p,  m1,   1)
+	betaGain  = J(m1, m2,   1)
+	gammaGain = J(m2, mout, 1)
+	if (!nobias) {
+		alpha0Gain = J(1, m1,   1)
+		beta0Gain  = J(1, m2,   1)
+		gamma0Gain = J(1, mout, 1)
+	}
+}
+
+void c_mlp2_gd::_update_gain()
+{
+	`RS' j
+	`SM' sind
+
+	if (gainrate <= 0) 
+		return
+	
+	if (	length(alphaGain) == 0 ||
+		length(betaGain)  == 0 ||
+		length(gammaGain) == 0) {
+		_init_gain()
+	}
+
+	if (	length(alphaGrad1) != length(alphaGrad) ||
+		length(betaGrad1)  != length(betaGrad)  ||
+		length(gammaGrad1) != length(gammaGrad)) {
+		alphaGrad1 = alphaGrad
+		betaGrad1  = betaGrad
+		gammaGrad1 = gammaGrad
+		if (!nobias) {
+			alpha0Grad1 = alpha0Grad
+			beta0Grad1  = beta0Grad
+			gamma0Grad1 = gamma0Grad
+		}
+		return
+	}
+
+	alphaGrad1 = alphaGrad1 :* alphaGrad
+	for (j = 1; j <= cols(alphaGrad); j++) {
+		sind = selectindex(alphaGrad1[,j] :> 0)
+		if (length(sind) > 0) {
+			alphaGain[sind,j] = alphaGain[sind,j] :+ gainrate
+		}
+		sind = selectindex(alphaGrad1[,j] :< 0)
+		if (length(sind) > 0) {
+			alphaGain[sind,j] = alphaGain[sind,j] :* (1-gainrate)
+		}
+	}
+	alphaGrad1 = alphaGrad
+
+	betaGrad1 = betaGrad1 :* betaGrad
+	for (j = 1; j <= cols(betaGrad); j++) {
+		sind = selectindex(betaGrad1[,j] :> 0)
+		if (length(sind) > 0) {
+			betaGain[sind,j] = betaGain[sind,j] :+ gainrate
+		}
+		sind = selectindex(betaGrad1[,j] :< 0)
+		if (length(sind) > 0) {
+			betaGain[sind,j] = betaGain[sind,j] :* (1-gainrate)
+		}
+	}
+	betaGrad1 = betaGrad
+
+	gammaGrad1 = gammaGrad1 :* gammaGrad
+	for (j = 1; j <= cols(gammaGrad); j++) {
+		sind = selectindex(gammaGrad1[,j] :> 0)
+		if (length(sind) > 0) {
+			gammaGain[sind,j] = gammaGain[sind,j] :+ gainrate
+		}
+		sind = selectindex(gammaGrad1[,j] :< 0)
+		if (length(sind) > 0) {
+			gammaGain[sind,j] = gammaGain[sind,j] :* (1-gainrate)
+		}
+	}
+	gammaGrad1 = gammaGrad
+
+	if (!nobias) {
+		alpha0Grad1 = alpha0Grad1 :* alpha0Grad
+		sind = selectindex(alpha0Grad1[1,] :> 0)
+		if (length(sind) > 0) {
+			alpha0Gain[1,sind] = alpha0Gain[1,sind] :+ gainrate
+		}
+		sind = selectindex(alpha0Grad1[1,] :< 0)
+		if (length(sind) > 0) {
+			alpha0Gain[1,sind] = alpha0Gain[1,sind] :* (1-gainrate)
+		}
+		alpha0Grad1 = alpha0Grad
+		
+		beta0Grad1 = beta0Grad1 :* beta0Grad
+		sind = selectindex(beta0Grad1[1,] :> 0)
+		if (length(sind) > 0) {
+			beta0Gain[1,sind] = beta0Gain[1,sind] :+ gainrate
+		}
+		sind = selectindex(beta0Grad1[1,] :< 0)
+		if (length(sind) > 0) {
+			beta0Gain[1,sind] = beta0Gain[1,sind] :* (1-gainrate)
+		}
+		beta0Grad1 = beta0Grad
+		
+		gamma0Grad1 = gamma0Grad1 :* gamma0Grad
+		sind = selectindex(gamma0Grad1[1,] :> 0)
+		if (length(sind) > 0) {
+			gamma0Gain[1,sind] = gamma0Gain[1,sind] :+ gainrate
+		}
+		sind = selectindex(gamma0Grad1[1,] :< 0)
+		if (length(sind) > 0) {
+			gamma0Gain[1,sind] = gamma0Gain[1,sind] :* (1-gainrate)
+		}
+		gamma0Grad1 = gamma0Grad
+	}
 }
 
 void c_mlp2_gd::_update(`RV' batch_ind)
@@ -683,15 +838,63 @@ void c_mlp2_gd::_update(`RV' batch_ind)
 	_grad_gamma(batch_ind)
 	_grad_beta()
 	_grad_alpha(batch_ind)
-
-	alpha = alpha - lrate*alphaGrad
-	beta  = beta  - lrate*betaGrad
-	gamma = gamma - lrate*gammaGrad
 	
+	if (gainrate > 0) {
+		_update_gain()
+		
+		alpha = alpha - lrate*(alphaGain :* alphaGrad)
+		beta  = beta  - lrate*(betaGain  :* betaGrad)
+		gamma = gamma - lrate*(gammaGain :* gammaGrad)
+
+		if (!nobias) {
+			alpha0 = alpha0 - lrate*(alpha0Gain :* alpha0Grad)
+			beta0  = beta0  - lrate*(beta0Gain  :* beta0Grad)
+			gamma0 = gamma0 - lrate*(gamma0Gain :* gamma0Grad)
+		}
+		return
+	}
+
+/*
+	`RM' alpha2, beta2, gamma2
+	`RS' curloss, lastloss, delta
+	alpha2 = alpha
+	beta2  = beta
+	gamma2 = gamma
+
+	delta = 0.00001
+	lastloss = _compute_loss(J(1,0,0))
+"alpha"
+alphaGrad	
+	alpha[4,3] = alpha[4,3] + delta
+	_compute_forward(J(1,0,0))
+	curloss = _compute_loss(J(1,0,0))
+(curloss-lastloss)/delta
+	alpha = alpha2
+	
+"beta"
+betaGrad	
+	beta[3,1] = beta[3,1] + delta
+	_compute_forward(J(1,0,0))
+	curloss = _compute_loss(J(1,0,0))
+(curloss-lastloss)/delta
+	beta = beta2
+	
+"gamma"
+gammaGrad
+	gamma[1,1] = gamma[1,1] + delta
+	_compute_forward(J(1,0,0))
+	curloss = _compute_loss(J(1,0,0))
+(curloss-lastloss)/delta
+	gamma = gamma2
+*/
+	alpha = alpha - lrate * alphaGrad
+	beta  = beta  - lrate * betaGrad
+	gamma = gamma - lrate * gammaGrad
+
 	if (!nobias) {
-		alpha0 = alpha0 - lrate*alpha0Grad
-		beta0  = beta0  - lrate*beta0Grad
-		gamma0 = gamma0 - lrate*gamma0Grad
+		alpha0 = alpha0 - lrate * alpha0Grad
+		beta0  = beta0  - lrate * beta0Grad
+		gamma0 = gamma0 - lrate * gamma0Grad
 	}
 }
 

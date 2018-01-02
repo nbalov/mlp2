@@ -25,10 +25,11 @@ end
 
 program mlp2_fit, eclass
 
-	syntax varlist(fv ts) [if] [in] [, nobias	///
+	syntax varlist(fv ts) [if] [in] [, NOINTERcepts	///
 		layer1(real 0) layer2(real 0)		///
 		OPTimizer(string)			///
-		LRate(real 0.01) FRiction(real 1)	///
+		LRate(real 0.01) GAINRate(real 0)	///
+		FRiction(real 1)			///
 		EPSilon(real 1e-8)			///
 		LOSStol(real 0.00)			///
 		DROPout(real 0.00)			///
@@ -65,6 +66,11 @@ program mlp2_fit, eclass
 		error 198
 	}
 
+	if `gainrate' < 0 {
+		di as err "{\bf gainrate()} must be non-negative"
+		error 198
+	}
+	
 	if `friction' < 0 | `friction' > 1 {
 		di as err "{\bf friction()} must be between 0 and 1"
 		error 198
@@ -108,13 +114,14 @@ program mlp2_fit, eclass
 		local c_mlp2_optimizer c_mlp2_adagrad
 	}
 	else {
-		di as err "unknown optimizer {\bf optimizer}"
+		di as err "unknown optimizer {bf:`optimizer'}"
 		error 198
 	}
 	
 	mata: _mlp2 = `c_mlp2_optimizer'()
 
 	mata: _mlp2.set_lrate(`lrate')
+	mata: _mlp2.set_gainrate(`gainrate')
 	mata: _mlp2.set_friction(`friction')
 	if `"`optimizer'"' == "momentum" {
 	}
@@ -127,7 +134,7 @@ program mlp2_fit, eclass
 	mata: _mlp2.fit(`"`yy'"', `"`xvars'"',	`"`touse'"',	///
 		`layer1', `layer2', `nout',		 	///
 		`batch', `epochs', `losstol', `dropout',	///
-		 "`nobias'" != "", `echo')
+		 "`nointercepts'" != "", `echo')
 	mata: _mlp2.save_params()
 	mata: mata drop _mlp2
 
