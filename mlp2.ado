@@ -34,7 +34,7 @@ program mlp2_fit, eclass
 		LOSStol(real 0.00)			///
 		DROPout(real 0.00)			///
 		epochs(real 1000)      			///
-		batch(real 0)				///
+		batch(real 50)				///
 		echo(real 0)]
 
 	tempvar touse

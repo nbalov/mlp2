@@ -60,6 +60,8 @@ protected:
 	void _grad_gamma()
 
 	void _dropout()
+	
+	void _gradient_test()
 
 public:
 	void new()
@@ -418,6 +420,7 @@ void c_mlp2::_compute_forward(`RV' batch_ind)
 		Z = VV * gamma :+ gamma0
 	}
 
+	// if there is z > 709, exp(z) returns .
 	expZ  = exp(Z)
 	rexpZ = rowsum(expZ)
 	expZ  = expZ  :/ rexpZ
@@ -538,6 +541,63 @@ void c_mlp2::_grad_alpha(`RV' batch_ind)
 	alpha0Grad = colsum(alpha0Grad)
 }
 
+
+void c_mlp2::_gradient_test(`RS' delta, 
+	`RS' ialpha, `RS' jalpha,
+	`RS' ibeta,  `RS' jbeta,
+	`RS' igamma, `RS' jgamma)
+{
+	`RM' alpha2, beta2, gamma2
+	`RM' alphaGrad2, betaGrad2, gammaGrad2
+	`RS' curloss, steploss
+	`RV' batch_ind
+
+	alpha2 = alpha
+	beta2  = beta
+	gamma2 = gamma
+
+	batch_ind = 1..n
+
+	_compute_forward(batch_ind)
+	curloss = _compute_loss(batch_ind)
+
+	_grad_gamma(batch_ind)
+	_grad_beta()
+	_grad_alpha(batch_ind)
+
+	alphaGrad2 = alphaGrad
+	betaGrad2  = betaGrad
+	gammaGrad2 = gammaGrad
+	
+	if (delta <= 0) {
+		delta = 1e-8
+	}
+
+	alpha[ialpha, jalpha] = alpha[ialpha, jalpha] + delta
+	_compute_forward(batch_ind)
+	steploss = _compute_loss(batch_ind)
+	str = sprintf("alpha[%g, %g]: %g, %g", ialpha, jalpha, 
+		alphaGrad2[ialpha, jalpha], (steploss-curloss)/delta)
+	str
+	alpha = alpha2
+
+	beta[ibeta, jbeta] = beta[ibeta, jbeta] + delta
+	_compute_forward(batch_ind)
+	steploss = _compute_loss(batch_ind)
+	str = sprintf("beta[%g, %g]: %g, %g", ibeta, jbeta, 
+		betaGrad2[ibeta, jbeta], (steploss-curloss)/delta)
+	str
+	beta = beta2
+
+	gamma[igamma, jgamma] = gamma[igamma, jgamma] + delta
+	_compute_forward(batch_ind)
+	steploss = _compute_loss(batch_ind)
+	str = sprintf("gamma[%g, %g]: %g, %g", igamma, jgamma, 
+		gammaGrad2[igamma, jgamma], (steploss-curloss)/delta)
+	str
+	gamma = gamma2
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // class c_mlp2_optimizer
 
@@ -643,6 +703,8 @@ void c_mlp2_optimizer::fit(`SS' sy, `SS' sxvars, `SS' touse,
 			printf("%g: %g\n", iter, curloss)
 		}
 		if (curloss >= .) {
+			errprintf("Fail to converge.\n")
+			printf("You may need to reduce the learning rate or choose different optimizer.\n")
 			break
 		}
 		if (abs(lastloss - curloss) < losstol) {
@@ -650,6 +712,8 @@ void c_mlp2_optimizer::fit(`SS' sy, `SS' sxvars, `SS' touse,
 		}
 		lastloss  = curloss
 	}
+
+	//_gradient_test(1e-6, 3, 1, 1, 2, 2, 1)
 
 	brkval = setbreakintr(brkval)
 
@@ -854,39 +918,6 @@ void c_mlp2_gd::_update(`RV' batch_ind)
 		return
 	}
 
-/*
-	`RM' alpha2, beta2, gamma2
-	`RS' curloss, lastloss, delta
-	alpha2 = alpha
-	beta2  = beta
-	gamma2 = gamma
-
-	delta = 0.00001
-	lastloss = _compute_loss(J(1,0,0))
-"alpha"
-alphaGrad	
-	alpha[4,3] = alpha[4,3] + delta
-	_compute_forward(J(1,0,0))
-	curloss = _compute_loss(J(1,0,0))
-(curloss-lastloss)/delta
-	alpha = alpha2
-	
-"beta"
-betaGrad	
-	beta[3,1] = beta[3,1] + delta
-	_compute_forward(J(1,0,0))
-	curloss = _compute_loss(J(1,0,0))
-(curloss-lastloss)/delta
-	beta = beta2
-	
-"gamma"
-gammaGrad
-	gamma[1,1] = gamma[1,1] + delta
-	_compute_forward(J(1,0,0))
-	curloss = _compute_loss(J(1,0,0))
-(curloss-lastloss)/delta
-	gamma = gamma2
-*/
 	alpha = alpha - lrate * alphaGrad
 	beta  = beta  - lrate * betaGrad
 	gamma = gamma - lrate * gammaGrad

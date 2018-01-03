@@ -43,7 +43,7 @@ default is {opt level1}{p_end}
 {synopt :{opt eps:ilon(#)}}gradient smoothing term; default is {cmd:epsilon(1e-8)}{p_end}
 {synopt :{opt loss:tol(#)}}stopping loss tolerance; default is {cmd:losstol(0)}{p_end}
 {synopt :{opt drop:out(#)}}dropout probability; default is {cmd:dropout(0)}{p_end}
-{synopt :{opt batch(#)}}training batch size; default is {cmd:batch(0)} or entire sample{p_end}
+{synopt :{opt batch(#)}}training batch size; default is {cmd:batch(50)} or entire sample{p_end}
 {synopt :{opt epochs(#)}}maximum number of iterations; default is {cmd:epochs(1000)}{p_end}
 {synopt :{opt echo(#)}}report loss values at every # number of iterations;
  defailt is {cmd:echo(0)}{p_end}
@@ -125,7 +125,8 @@ It must be a probability value less than 1. The default value is {it:0}.
 
 {phang}
 {opt batch(#)} specifies the batch size used during training. 
-By default, the entire sample is used, {opt batch(0)}.
+By default, batch of size 50 is used, {opt batch(50)}. If you want to use the 
+entire sample as one batch, you specify {opt batch(0)}. 
 
 {phang}
 {opt epochs(#)} specifies the maximum number of iterations performed by the 
@@ -157,12 +158,26 @@ The variables {indepvars} define the neurons of the lowest, zero, layer.
 The highest, third, layer has as many neurons as is the number of levels of the 
 outcome variable {depvar}. 
 
+{pstd}
+The activation functions used for the two hidden 
+layers are rectified liner units, {cmd:x -> max(0, x)}. The activation function 
+in the third, output, layer is the softmax function. That is, conditional on 
+the second hidden layer, the third layer implements multinomial logistic 
+regression. The loss function of the network is given by the negative 
+log-likelihood of the multinomial logistic regression model.
+
+{pstd}
+The training command {cmd:mlp2 fit} uses stochastic gradient descent algorithms 
+to optimize the loss function. You can control it by specifying appropriate 
+batch size, {opt batch()}, learning rate, {opt lrate()}, etc.
+
 {marker examples}{...}
 {title:Examples}
 
-{pstd}Setup{p_end}
+{pstd}Training and prediction evaluation of the MNIST dataset{p_end}
+
 {phang2}{cmd:. use mnist-train}{p_end}
-{phang2}{cmd:. mlp2 fit y v*, hidden1(64) hidden2(64) epochs(100)}{p_end}
+{phang2}{cmd:. mlp2 fit y v*, hidden1(100) hidden2(100) epochs(100)}{p_end}
 {phang2}{cmd:. mlp2 predict, genvar(ypred) truelabel(y)}{p_end}
 
 
