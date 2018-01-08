@@ -6,7 +6,7 @@ include mlp2.mata, adopath
 
 program mlp2, eclass
 
-	gettoken subcmd lhs : 0
+	gettoken subcmd lhs : 0, parse("\ ,")
 
 	if `"`subcmd'"' == "fit" {
 		mlp2_fit `lhs'
@@ -28,12 +28,12 @@ program mlp2_fit, eclass
 	syntax varlist(fv ts) [if] [in] [, NOINTERcepts	///
 		layer1(real 0) layer2(real 0)		///
 		OPTimizer(string)			///
-		LRate(real 0.01) GAINRate(real 0)	///
+		LRate(real 0.1) GAINRate(real 0)	///
 		FRiction(real 1)			///
 		EPSilon(real 1e-8)			///
-		LOSStol(real 0.00)			///
+		LOSStol(real 1e-4)			///
 		DROPout(real 0.00)			///
-		epochs(real 1000)      			///
+		epochs(real 100)      			///
 		batch(real 50)				///
 		echo(real 0)]
 
@@ -99,9 +99,9 @@ program mlp2_fit, eclass
 	local rstate = c(rngstate)
 
 	if `"`optimizer'"' == "" {
-		local optimizer gd
+		local optimizer sgd
 	}
-	if `"`optimizer'"' == "gd" {
+	if `"`optimizer'"' == "gd" || `"`optimizer'"' == "sgd" {
 		local c_mlp2_optimizer c_mlp2_gd
 	}
 	else if `"`optimizer'"' == "momentum" || `"`optimizer'"' == "mom" {
@@ -129,6 +129,15 @@ program mlp2_fit, eclass
 	}
 	else if `"`optimizer'"' == "adagrad" {
 		mata: _mlp2.set_eps(`epsilon')
+	}
+
+	if `echo' > 0 {
+		di "optimizer: `optimizer'"
+		di "batch:     `batch'"
+		di "lrate:     `lrate'"
+		di "losstol:   `losstol'"
+		di
+		di "epoch: loss"
 	}
 
 	mata: _mlp2.fit(`"`yy'"', `"`xvars'"',	`"`touse'"',	///

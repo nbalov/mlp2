@@ -38,13 +38,13 @@ default is the number of levels of {depvar}{p_end}
 default is {opt level1}{p_end}
 {synopt :{opt nobias}}no bias terms are used{p_end}
 {synopt :{opt opt:imizer(string)}}optimizer; default is {cmd:optimizer(gd)}{p_end}
-{synopt :{opt lr:ate(#)}}learning rate of the optimizer; default is {cmd:lrate(0.01)}{p_end}
+{synopt :{opt lr:ate(#)}}learning rate of the optimizer; default is {cmd:lrate(0.1)}{p_end}
 {synopt :{opt fr:iction(#)}}friction rate for momentum optimizers; default is {cmd:friction(1)}{p_end}
 {synopt :{opt eps:ilon(#)}}gradient smoothing term; default is {cmd:epsilon(1e-8)}{p_end}
-{synopt :{opt loss:tol(#)}}stopping loss tolerance; default is {cmd:losstol(0)}{p_end}
+{synopt :{opt loss:tol(#)}}stopping loss tolerance; default is {cmd:losstol(1e-4)}{p_end}
 {synopt :{opt drop:out(#)}}dropout probability; default is {cmd:dropout(0)}{p_end}
 {synopt :{opt batch(#)}}training batch size; default is {cmd:batch(50)} or entire sample{p_end}
-{synopt :{opt epochs(#)}}maximum number of iterations; default is {cmd:epochs(1000)}{p_end}
+{synopt :{opt epochs(#)}}maximum number of iterations; default is {cmd:epochs(100)}{p_end}
 {synopt :{opt echo(#)}}report loss values at every # number of iterations;
  defailt is {cmd:echo(0)}{p_end}
 {synoptline}
@@ -105,7 +105,7 @@ By default {it: gd} is used.
 
 {phang}
 {opt lrate(#)} specifies the learning rate used by gradient descent algorithms. 
-It must be a positive number. The default value is {it:0.01}.
+It must be a positive number. The default value is {it:0.1}.
 
 {phang}
 {opt friction(#)} specifies the friction rate for momentum based optimizers. 
@@ -117,7 +117,7 @@ optimization algorithms. It must be a positive number. The default value is {it:
 
 {phang}
 {opt losstol(#)} specifies the stopping loss tolerance used by all 
-optimization algorithms. It must be a non-negative number. The default value is {it:0}.
+optimization algorithms. It must be a non-negative number. The default value is {it:1e-4}.
 
 {phang}
 {opt dropout(#)} specifies the dropout probability applied during training. 
@@ -130,7 +130,7 @@ entire sample as one batch, you specify {opt batch(0)}.
 
 {phang}
 {opt epochs(#)} specifies the maximum number of iterations performed by the 
-optimizer. The default value is {it:1000}.
+optimizer. The default value is {it:100}.
 
 {phang}
 {opt echo(#)} requests that the loss is reported at every # number of 

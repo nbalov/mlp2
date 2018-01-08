@@ -230,7 +230,7 @@ void c_mlp2::predict(`SS' sxvars, `SS' stouse, `SS' sgenvar)
 
 	for (k = 1; k <= mout; k++) {
 		stata(sprintf("cap drop %s", ylabels[k]))
-		stata(sprintf("generate double %s = .", ylabels[k]), 1)
+		stata(sprintf("generate float %s = .", ylabels[k]), 1)
 		st_store(touse, ylabels[k], expZ[,k])
 	}
 }
@@ -292,6 +292,7 @@ void c_mlp2::score(`SS' sy, `SS' stouse)
 	for (k = 1; k <= length(y); k++) {
 		y[k] = expZ[k,y[k]] >= max(expZ[k,])
 	}
+	st_matrix("e(pred_err_ind)", selectindex(y:==0)', "hidden")
 	st_numscalar("e(score_acc)", mean(y), "hidden")
 }
 
